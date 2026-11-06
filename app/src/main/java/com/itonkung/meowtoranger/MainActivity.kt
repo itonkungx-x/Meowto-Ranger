@@ -46,7 +46,7 @@ class MainActivity : Activity() {
         RemoteConfig(this).refreshInBackground()
         AppUpdater(this).checkForUpdates(silent = true)
     }
-    override fun onResume() { super.onResume(); updater.post(refresh) }
+    override fun onResume() { super.onResume(); updater.post(refresh); AppUpdater(this).resumePendingInstall() }
     override fun onPause() { updater.removeCallbacks(refresh); super.onPause() }
     private val refresh = object : Runnable {
         override fun run() {
