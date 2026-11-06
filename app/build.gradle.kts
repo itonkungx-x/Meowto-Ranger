@@ -15,7 +15,21 @@ android {
         versionName = "0.8.0"
     }
 
-    // Release signing remains private: injected by GitHub Actions secrets.\n    val signedKeystore = rootProject.file("release-keystore.jks")\n    if (signedKeystore.isFile) {\n        signingConfigs {\n            create("meowtoRelease") {\n                storeFile = signedKeystore\n                storePassword = System.getenv("MEOWTO_STORE_PASSWORD") ?: error("Missing release store password")\n                keyAlias = System.getenv("MEOWTO_KEY_ALIAS") ?: error("Missing key alias")\n                keyPassword = System.getenv("MEOWTO_KEY_PASSWORD") ?: error("Missing key password")\n            }\n        }\n        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("meowtoRelease")\n    }\n\n    compileOptions {
+    // Release signing remains private: injected by GitHub Actions secrets.
+    val signedKeystore = rootProject.file("release-keystore.jks")
+    if (signedKeystore.isFile) {
+        signingConfigs {
+            create("meowtoRelease") {
+                storeFile = signedKeystore
+                storePassword = System.getenv("MEOWTO_STORE_PASSWORD") ?: error("Missing release store password")
+                keyAlias = System.getenv("MEOWTO_KEY_ALIAS") ?: error("Missing key alias")
+                keyPassword = System.getenv("MEOWTO_KEY_PASSWORD") ?: error("Missing key password")
+            }
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("meowtoRelease")
+    }
+
+    compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
