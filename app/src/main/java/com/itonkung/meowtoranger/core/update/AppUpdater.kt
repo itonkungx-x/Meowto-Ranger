@@ -24,6 +24,8 @@ import java.util.Locale
 class AppUpdater(private val activity: Activity) {
     private val latestUrl = "https://api.github.com/repos/itonkungx-x/Meowto-Ranger/releases/latest"
     private val maxBytes = 150L * 1024L * 1024L
+    private val updatesDir get() = File(activity.cacheDir, "updates")
+    private val pendingInstall get() = activity.getSharedPreferences("meowto_updates", Activity.MODE_PRIVATE)
 
     fun checkForUpdates(silent: Boolean = false) {
         // A background check happens at most once every six hours.
@@ -138,6 +140,7 @@ class AppUpdater(private val activity: Activity) {
                 }
                 if (apk.exists()) apk.delete()
                 if (!temporary.renameTo(apk)) throw IllegalStateException("บันทึก APK ไม่สำเร็จ")
+                validatePackage(apk)
                 activity.runOnUiThread { installApk(apk) }
             } catch (e: Exception) {
                 toast("ดาวน์โหลดล้มเหลว: ${e.message ?: "ไม่ทราบสาเหตุ"}")
@@ -145,14 +148,46 @@ class AppUpdater(private val activity: Activity) {
         }.start()
     }
 
+    /** Continue the same download after Android grants install permission. */
+    fun resumePendingInstall() {
+        if (!pendingInstall.getBoolean("install_pending_permission", false)) return
+        if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) return
+        val apk = File(updatesDir, "Meowto-Ranger-update.apk")
+        pendingInstall.edit().putBoolean("install_pending_permission", false).apply()
+        if (!apk.isFile) return
+        try {
+            validatePackage(apk)
+            AlertDialog.Builder(activity)
+                .setTitle("พร้อมติดตั้งอัปเดต")
+                .setMessage("ดาวน์โหลดเสร็จแล้ว ต้องการติดตั้ง Meowto Ranger รุ่นใหม่หรือไม่?")
+                .setNegativeButton("ภายหลัง", null)
+                .setPositiveButton("ติดตั้ง") { _, _ -> installApk(apk) }
+                .show()
+        } catch (e: Exception) {
+            toast("ตรวจสอบไฟล์อัปเดตไม่ผ่าน: ${e.message}")
+        }
+    }
+
+    private fun validatePackage(apk: File) {
+        val archive = activity.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+            ?: throw SecurityException("ไม่ใช่ไฟล์ Android APK ที่ถูกต้อง")
+        require(archive.packageName == activity.packageName) { "APK ไม่ใช่ Meowto Ranger" }
+        val installed = activity.packageManager.getPackageInfo(activity.packageName, 0)
+        require(archive.longVersionCode > installed.longVersionCode) {
+            "เวอร์ชันอัปเดตต้องใหม่กว่าแอปที่ติดตั้ง"
+        }
+    }
+
     private fun installApk(apk: File) {
         if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
-            toast("อนุญาตติดตั้งจาก Meowto Ranger แล้วกดอัปเดตใหม่อีกครั้ง")
+            pendingInstall.edit().putBoolean("install_pending_permission", true).apply()
+            toast("อนุญาตติดตั้งแอป แล้วกลับมาที่ Meowto Ranger")
             val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:${activity.packageName}"))
             activity.startActivity(intent)
             return
         }
+        pendingInstall.edit().putBoolean("install_pending_permission", false).apply()
         val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", apk)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
