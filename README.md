@@ -2,7 +2,7 @@
 
 **Android automation hub for LINE Rangers** — a modular application intended to grow beyond friendship points.
 
-> Development status: architecture/bootstrap. The current new repository build is **not yet a proven one-APK, Accessibility-free controller**. Do not claim it can inject touches without Android authorization.
+> Development status: **v0.8 preview builds successfully**, but still uses the legacy Accessibility-based game controller. An embedded no-Accessibility input backend has not been implemented or verified. This preview does not solve K PLUS compatibility.
 
 ## Goals
 
@@ -48,3 +48,13 @@ config/            Remote non-executable parameters
 ## Previous implementation
 
 The older Rangers Friend Auto v0.7 uses an AccessibilityService and is **not** directly suitable as a banking-compatible, Accessibility-free implementation. Its game detection workflow can be ported after the new backend is verified.
+
+## Latest verified CI preview
+
+The GitHub Actions Android CI build for commit `34dea2d0e6549912d0064766bf491170c947c34d` succeeded, including the new updater flow that resumes installation after Android's unknown-source permission is enabled. See the run: https://github.com/itonkungx-x/Meowto-Ranger/actions/runs/42201500652
+
+**Important:** CI preview uses a debug certificate and is not a permanent installation/update channel. Configure the private signing credentials described in [docs/RELEASING.md](docs/RELEASING.md) and publish the first official signed release before telling users to use the in-app updater for future upgrades.
+
+Current update capabilities: GitHub release check, SHA-256 validation, correct-package and increasing-version verification, permission handoff and installation confirmation. Android does not permit silent installation.
+
+The remote numeric configuration refreshes from `config/friend-points.json` and can be updated independently of the APK. The legacy Accessibility service is not a bank-compatible no-Accessibility solution.
