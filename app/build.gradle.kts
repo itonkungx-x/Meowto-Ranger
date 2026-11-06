@@ -11,8 +11,8 @@ android {
         applicationId = "com.itonkung.meowtoranger"
         minSdk = 30
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 9
+        versionName = "0.9.0"
     }
 
     // Release signing remains private: injected by GitHub Actions secrets.
@@ -29,12 +29,26 @@ android {
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("meowtoRelease")
     }
 
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/versions/**/OSGI-INF/MANIFEST.MF",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE.md",
+                "META-INF/NOTICE.md"
+            )
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
@@ -42,4 +56,6 @@ android {
 dependencies {
     implementation("androidx.core:core:1.15.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.github.rhythmcache:adb-kt:v1.0.13")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
