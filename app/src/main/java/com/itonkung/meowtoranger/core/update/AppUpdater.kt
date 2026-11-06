@@ -25,31 +25,46 @@ class AppUpdater(private val activity: Activity) {
     private val latestUrl = "https://api.github.com/repos/itonkungx-x/Meowto-Ranger/releases/latest"
     private val maxBytes = 150L * 1024L * 1024L
 
-    fun checkForUpdates() {
-        toast("กำลังตรวจสอบอัปเดต…")
+    fun checkForUpdates(silent: Boolean = false) {
+        // A background check happens at most once every six hours.
+        // The manual "Check update" button always checks immediately.
+        val prefs = activity.getSharedPreferences("meowto_updates", Activity.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (silent && now - prefs.getLong("last_successful_check", 0L) < 6L * 60L * 60L * 1000L) return
+        if (!silent) toast("กำลังตรวจสอบอัปเดต…")
         Thread {
             try {
                 val data = JSONObject(fetchJson(latestUrl))
+                if (data.optBoolean("draft", false) || data.optBoolean("prerelease", false)) {
+                    throw IllegalStateException("ยังไม่มีรุ่นเผยแพร่")
+                }
+                prefs.edit().putLong("last_successful_check", System.currentTimeMillis()).apply()
                 val tag = data.optString("tag_name").trimStart('v', 'V')
                 val installed = activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "0"
                 if (compareVersions(tag, installed) <= 0) {
-                    toast("แอปเป็นรุ่นล่าสุดแล้ว ($installed)")
+                    if (!silent) toast("แอปเป็นรุ่นล่าสุดแล้ว ($installed)")
                     return@Thread
                 }
 
                 val assets = data.optJSONArray("assets") ?: throw IllegalStateException("ไม่มีไฟล์ดาวน์โหลด")
                 var downloadUrl = ""
+                var apkName = ""
                 var digest = ""
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
                     val name = asset.optString("name")
                     if (name.startsWith("Meowto-Ranger-") && name.endsWith(".apk")) {
                         downloadUrl = asset.getString("browser_download_url")
+                        apkName = name
                         digest = asset.optString("digest")
                         break
                     }
                 }
                 if (downloadUrl.isBlank()) throw IllegalStateException("ยังไม่มี APK สำหรับเวอร์ชัน $tag")
+                // Always authenticate the downloaded bytes against the release's SHA-256.
+                // Older GitHub releases can omit the asset digest; use the companion
+                // checksum asset published by our release workflow in that case.
+                val expectedDigest = resolveDigest(assets, apkName, digest)
                 val checked = URL(downloadUrl)
                 require(checked.protocol == "https" && checked.host.equals("github.com", true) &&
                     checked.path.startsWith("/itonkungx-x/Meowto-Ranger/releases/download/")) {
@@ -60,13 +75,33 @@ class AppUpdater(private val activity: Activity) {
                         .setTitle("Meowto Ranger $tag")
                         .setMessage("เวอร์ชันปัจจุบัน: $installed\nต้องการดาวน์โหลดและติดตั้งอัปเดตหรือไม่?")
                         .setNegativeButton("ภายหลัง", null)
-                        .setPositiveButton("อัปเดต") { _, _ -> downloadAndInstall(downloadUrl, digest) }
+                        .setPositiveButton("อัปเดต") { _, _ -> downloadAndInstall(downloadUrl, expectedDigest) }
                         .show()
                 }
             } catch (e: Exception) {
-                toast("ตรวจอัปเดตไม่ได้: ${e.message ?: "เครือข่ายผิดพลาด"}")
+                if (!silent) toast("ตรวจอัปเดตไม่ได้: ${e.message ?: "เครือข่ายผิดพลาด"}")
             }
         }.start()
+    }
+
+    private fun resolveDigest(assets: org.json.JSONArray, apkName: String, apiDigest: String): String {
+        val shaPattern = Regex("(?i)^[a-f0-9]{64}$")
+        val fromApi = apiDigest.removePrefix("sha256:").trim()
+        if (apiDigest.startsWith("sha256:", true) && shaPattern.matches(fromApi)) return fromApi
+        for (i in 0 until assets.length()) {
+            val asset = assets.getJSONObject(i)
+            if (asset.optString("name") == "$apkName.sha256") {
+                val checksumUrl = asset.getString("browser_download_url")
+                val expected = URL(checksumUrl)
+                require(expected.protocol == "https" && expected.host.equals("github.com", true) &&
+                    expected.path.startsWith("/itonkungx-x/Meowto-Ranger/releases/download/")) {
+                    "แหล่งตรวจสอบไฟล์ไม่ถูกต้อง"
+                }
+                val sha = fetchJson(checksumUrl).trim().split(Regex("\\s+")).firstOrNull() ?: ""
+                if (shaPattern.matches(sha)) return sha
+            }
+        }
+        throw SecurityException("ไม่มี SHA-256 ยืนยันความปลอดภัยของไฟล์อัปเดต")
     }
 
     private fun downloadAndInstall(link: String, expectedDigest: String) {
@@ -98,9 +133,8 @@ class AppUpdater(private val activity: Activity) {
                 }
                 if (received < 1024L) throw IllegalStateException("ไฟล์ APK ไม่สมบูรณ์")
                 val actual = hash.digest().joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
-                if (expectedDigest.startsWith("sha256:", true)) {
-                    val sha = expectedDigest.substringAfter(':')
-                    if (!actual.equals(sha, true)) throw SecurityException("SHA-256 ไม่ตรงกับ GitHub")
+                if (!actual.equals(expectedDigest, true)) {
+                    throw SecurityException("SHA-256 ไม่ตรงกับไฟล์เผยแพร่ที่ตรวจสอบ")
                 }
                 if (apk.exists()) apk.delete()
                 if (!temporary.renameTo(apk)) throw IllegalStateException("บันทึก APK ไม่สำเร็จ")
