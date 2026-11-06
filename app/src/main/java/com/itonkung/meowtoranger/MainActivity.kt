@@ -44,6 +44,7 @@ class MainActivity : Activity() {
         window.navigationBarColor = base
         buildScreen()
         RemoteConfig(this).refreshInBackground()
+        AppUpdater(this).checkForUpdates(silent = true)
     }
     override fun onResume() { super.onResume(); updater.post(refresh) }
     override fun onPause() { updater.removeCallbacks(refresh); super.onPause() }
