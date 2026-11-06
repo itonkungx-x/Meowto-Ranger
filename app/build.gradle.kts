@@ -29,6 +29,17 @@ android {
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("meowtoRelease")
     }
 
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/versions/**/OSGI-INF/MANIFEST.MF",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE.md",
+                "META-INF/NOTICE.md"
+            )
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
