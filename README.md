@@ -1,60 +1,45 @@
-# Meowto Ranger 🐈
+# Meowto Ranger
 
-**Android automation hub for LINE Rangers** — a modular application intended to grow beyond friendship points.
+**LINE Rangers Android automation hub — one APK, extensible modules.**
 
-> Development status: **v0.8 preview builds successfully**, but still uses the legacy Accessibility-based game controller. An embedded no-Accessibility input backend has not been implemented or verified. This preview does not solve K PLUS compatibility.
+## v0.9 preview (no AccessibilityService)
 
-## Goals
+The preview has an embedded Android Wireless Debugging ADB client to inject touches, a user-consented MediaProjection foreground service to read the game screen, and the original friendship-point workflow (including slower swipes, button confirmation, OCR quota reading, wrong-page recovery). No separate Shizuku application or root is required.
 
-- One installable Android application named **Meowto Ranger**, with separate feature modules.
-- **Friend Points** as the first feature; other tasks can be added through the same module interface.
-- No mandatory third-party companion app. Investigate an *embedded, user-paired Wireless ADB client* rather than pretending ordinary Android applications can tap other applications without privilege.
-- MediaProjection requires a **user-approved screen capture session** and explicit foreground service.
-- Visible **Start / Stop**, activity state, daily quota, tap safety, and out-of-game fail-closed behavior.
-- GitHub Releases-powered in-app updater: detect new version, download APK, validate digest, launch Android's **user-confirmed** installer.
-- Remote configuration for safe numeric settings (swipe duration, settling delay etc.). No dynamic code loading.
-- Stable release signing identity across all versions; **never commit the signing key to a public repository**.
+This is **not** an install-and-run-with-zero-authorization product. Android still requires initial Wireless Debugging pairing from Developer Options, and screen-capture permission **once per capture session**. Wireless Debugging may need to be reenabled after restarting the phone. This prototype is not yet verified against K PLUS or the game on a physical device. Do not change bank settings or bypass security warnings.
 
-## Permissions / bank apps
+## Quick setup
 
-This tool must not disguise itself from K PLUS or bypass banking security. The user reports K PLUS operates normally when the old Accessibility automation service is disabled. Embedded wireless debugging is a candidate, **not a verified K PLUS compatibility fix**; test it with the bank app before claiming compatibility.
+1. Install the APK. Open `Meowto Ranger`.
+2. On the same phone, enable **Developer options → Wireless debugging** while connected to Wi-Fi.
+3. Open **Pair device with pairing code** in Android Settings. Use split-screen with Meowto Ranger to keep the pairing dialog visible.
+4. Enter the **pairing port** and six-digit code into Meowto Ranger, then press **จับคู่**. Do not confuse pairing port with connection port.
+5. Back at the main **Wireless Debugging** screen, read **IP address & Port**, enter its **connection port** in Meowto Ranger and press **เชื่อมต่อ**.
+6. Press **เริ่มช่วยเพื่อน**, confirm LINE sending, and approve Android's **Share entire screen** dialog. The app opens LINE Rangers and runs the friend-points module.
+7. Use the persistent **Meowto Ranger notification → หยุด** to stop while in the game. It also stops automatically upon leaving the game.
 
-## Roadmap
+If the game does not run, verify that Wireless Debugging remains enabled and reconnect with the current port. On Android 14+, a new capture session always needs another Android permission dialog.
 
-- [x] Repository and modular architecture plan.
-- [ ] Implement and validate embedded wireless ADB pairing and input backend; explicit Android authorization is required.
-- [ ] Implement MediaProjection capture pipeline, detection, and state-machine handoff.
-- [ ] Port friend-points automation to the input/capture abstraction with safe recovery.
-- [ ] Add extensible module registry and user-friendly Thai UI.
-- [ ] Implement and test GitHub Release updater, remote settings, and rollback protections.
-- [ ] Sign production release with persistent private keystore (CI secrets) and publish initial APK.
-- [ ] Verify on a physical device, including K PLUS compatibility and game policy.
+## Safety and permissions
 
-## Proposed structure
+- **NO** `BIND_ACCESSIBILITY_SERVICE` in the v0.9 manifest; legacy service removed.
+- Commands only run if Wireless ADB confirms the foreground app is LINE Rangers (`com.linecorp.LGRGS`). Unknown foreground = do not tap.
+- Screen capture exists only during active, user-authorized gameplay and is released when the service stops.
+- No screenshot content or pairing codes are uploaded to any server. ADB signing key lives in app-private `noBackupFilesDir`.
+- The automation sends real LINE messages to friends. It asks for in-app consent when starting and respects the 50-message daily game limit.
+- K PLUS compatibility remains **unverified**. Do not use or attempt to bypass banking security if the bank warns.
 
-```text
-app/               Android application, home dashboard
-core/input/        Input backend interface and on-device Wireless ADB implementation
-core/capture/      MediaProjection with per-session consent
-core/update/       GitHub Releases APK updater
-core/config/       Validated remote settings
-modules/friends/   Daily friendship-points workflow and detection
-.github/workflows  CI build and release signing
-config/            Remote non-executable parameters
-```
+## Modules
 
-**Update behavior:** Adjusting remote numeric values may need no APK install. Changing executable Kotlin/Android code does require a new signed APK and Android user consent during installation.
+`modules/friends/FriendSession.kt` implements friendship points. The `ModuleRegistry` and `core/input` + `core/capture` boundaries support future game modules.
 
-## Previous implementation
+## Updates
 
-The older Rangers Friend Auto v0.7 uses an AccessibilityService and is **not** directly suitable as a banking-compatible, Accessibility-free implementation. Its game detection workflow can be ported after the new backend is verified.
+- Safe numeric timing settings live in `config/friend-points.json` and can refresh without changing the APK.
+- The in-app **ตรวจสอบอัปเดต** uses official GitHub Releases, validates APK SHA-256, and opens Android's official installation confirmation.
+- Code updates require a new signed APK; Android still requires installation confirmation.
+- **Critical:** Preview/debug APKs are not a permanent release channel. Configure a **single stable private release signing key** following [docs/RELEASING.md](docs/RELEASING.md). First install the official signed release; then future releases install as in-place updates.
 
-## Latest verified CI preview
+## Build and status
 
-The GitHub Actions Android CI build for commit `34dea2d0e6549912d0064766bf491170c947c34d` succeeded, including the new updater flow that resumes installation after Android's unknown-source permission is enabled. See the run: https://github.com/itonkungx-x/Meowto-Ranger/actions/runs/42201500652
-
-**Important:** CI preview uses a debug certificate and is not a permanent installation/update channel. Configure the private signing credentials described in [docs/RELEASING.md](docs/RELEASING.md) and publish the first official signed release before telling users to use the in-app updater for future upgrades.
-
-Current update capabilities: GitHub release check, SHA-256 validation, correct-package and increasing-version verification, permission handoff and installation confirmation. Android does not permit silent installation.
-
-The remote numeric configuration refreshes from `config/friend-points.json` and can be updated independently of the APK. The legacy Accessibility service is not a bank-compatible no-Accessibility solution.
+GitHub Actions CI builds a debug preview after pushes and PRs. Device integration testing is still required for Wireless Debugging pairing, MediaProjection orientation handling, game scene recognition, and K PLUS compatibility. Do not claim an APK built by CI has passed real-game testing.
