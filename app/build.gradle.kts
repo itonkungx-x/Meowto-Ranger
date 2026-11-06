@@ -11,8 +11,8 @@ android {
         applicationId = "com.itonkung.meowtoranger"
         minSdk = 30
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 9
+        versionName = "0.9.0"
     }
 
     // Release signing remains private: injected by GitHub Actions secrets.
@@ -42,4 +42,6 @@ android {
 dependencies {
     implementation("androidx.core:core:1.15.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.github.rhythmcache:adb-kt:v1.0.13")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
