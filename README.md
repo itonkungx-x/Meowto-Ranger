@@ -1,3 +1,21 @@
+# Meowto Ranger — v0.12.0 preview: Update Checker Fix
+
+## Why v0.10 showed HTTP 404
+The old app called GitHub API `/releases/latest`. GitHub returns 404 because there are **no published official Releases** yet; only successful CI preview builds were available from GitHub Actions.
+
+## Fixed in v0.12
+- If no official GitHub Release exists, the app now checks the latest successful `main` GitHub Actions CI run.
+- The candidate version is read from `app/build.gradle.kts` at **that exact successful commit**, not from an unbuilt HEAD or a hardcoded number.
+- For a newer preview, the app displays its version and opens the exact GitHub Actions run page with the APK artifact.
+- The app displays the installed Android version dynamically instead of hardcoding the heading.
+- If no newer build exists, the app reports it instead of showing HTTP 404.
+- Official signed GitHub Release updates still download with SHA-256 validation and Android installer confirmation, as before.
+
+## Important limitation
+This is **not a one-tap update channel yet**. GitHub Actions preview APKs may be signed with different temporary debug keys, so installing one over another can fail. It may require uninstalling the old preview, losing local app data and re-enabling Accessibility. For true in-place updates, configure the long-lived private release keystore in GitHub Actions secrets and publish an official signed Release. See `docs/RELEASING.md`. Never commit signing keys or passwords.
+
+---
+
 # Meowto Ranger — v0.11.0 Accessibility preview
 
 This release keeps the v0.10 Accessibility-based LINE Rangers friend helper and automatic self-disable outside the game.
