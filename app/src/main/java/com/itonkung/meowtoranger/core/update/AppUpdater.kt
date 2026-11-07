@@ -28,62 +28,115 @@ class AppUpdater(private val activity: Activity) {
     private val pendingInstall get() = activity.getSharedPreferences("meowto_updates", Activity.MODE_PRIVATE)
 
     fun checkForUpdates(silent: Boolean = false) {
-        // A background check happens at most once every six hours.
-        // The manual "Check update" button always checks immediately.
+        // A manual check always runs. Automatic checks are throttled.
         val prefs = activity.getSharedPreferences("meowto_updates", Activity.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (silent && now - prefs.getLong("last_successful_check", 0L) < 6L * 60L * 60L * 1000L) return
         if (!silent) toast("กำลังตรวจสอบอัปเดต…")
         Thread {
             try {
-                val data = JSONObject(fetchJson(latestUrl))
-                if (data.optBoolean("draft", false) || data.optBoolean("prerelease", false)) {
-                    throw IllegalStateException("ยังไม่มีรุ่นเผยแพร่")
-                }
-                prefs.edit().putLong("last_successful_check", System.currentTimeMillis()).apply()
-                val tag = data.optString("tag_name").trimStart('v', 'V')
                 val installed = activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "0"
-                if (compareVersions(tag, installed) <= 0) {
-                    if (!silent) toast("แอปเป็นรุ่นล่าสุดแล้ว ($installed)")
-                    return@Thread
-                }
 
-                val assets = data.optJSONArray("assets") ?: throw IllegalStateException("ไม่มีไฟล์ดาวน์โหลด")
-                var downloadUrl = ""
-                var apkName = ""
-                var digest = ""
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name")
-                    if (name.startsWith("Meowto-Ranger-") && name.endsWith(".apk")) {
-                        downloadUrl = asset.getString("browser_download_url")
-                        apkName = name
-                        digest = asset.optString("digest")
-                        break
+                // GitHub returns 404 for /releases/latest when only CI previews exist.
+                // This is not a network failure; try Actions builds instead.
+                val release = try {
+                    JSONObject(fetchJson(latestUrl))
+                } catch (error: IllegalStateException) {
+                    if (error.message == "HTTP 404") null else throw error
+                }
+                if (release != null && !release.optBoolean("draft", false) &&
+                    !release.optBoolean("prerelease", false)) {
+                    val tag = release.optString("tag_name").trimStart('v', 'V')
+                    if (compareVersions(tag, installed) > 0) {
+                        prefs.edit().putLong("last_successful_check", System.currentTimeMillis()).apply()
+                        offerSignedRelease(release, tag, installed)
+                        return@Thread
                     }
                 }
-                if (downloadUrl.isBlank()) throw IllegalStateException("ยังไม่มี APK สำหรับเวอร์ชัน $tag")
-                // Always authenticate the downloaded bytes against the release's SHA-256.
-                // Older GitHub releases can omit the asset digest; use the companion
-                // checksum asset published by our release workflow in that case.
-                val expectedDigest = resolveDigest(assets, apkName, digest)
-                val checked = URL(downloadUrl)
-                require(checked.protocol == "https" && checked.host.equals("github.com", true) &&
-                    checked.path.startsWith("/itonkungx-x/Meowto-Ranger/releases/download/")) {
-                    "แหล่งอัปเดตไม่ตรงกับ GitHub ที่กำหนด"
-                }
-                activity.runOnUiThread {
-                    AlertDialog.Builder(activity)
-                        .setTitle("Meowto Ranger $tag")
-                        .setMessage("เวอร์ชันปัจจุบัน: $installed\nต้องการดาวน์โหลดและติดตั้งอัปเดตหรือไม่?")
-                        .setNegativeButton("ภายหลัง", null)
-                        .setPositiveButton("อัปเดต") { _, _ -> downloadAndInstall(downloadUrl, expectedDigest) }
-                        .show()
-                }
+
+                // Preview APKs may carry a different debug signing certificate.
+                // Do not attempt a silent in-place installation from GitHub Actions.
+                checkLatestPreview(installed, silent)
+                prefs.edit().putLong("last_successful_check", System.currentTimeMillis()).apply()
             } catch (e: Exception) {
                 if (!silent) toast("ตรวจอัปเดตไม่ได้: ${e.message ?: "เครือข่ายผิดพลาด"}")
             }
         }.start()
+    }
+
+    private fun offerSignedRelease(data: JSONObject, tag: String, installed: String) {
+        val assets = data.optJSONArray("assets") ?: throw IllegalStateException("Release ยังไม่มีไฟล์ APK")
+        var downloadUrl = ""
+        var apkName = ""
+        var digest = ""
+        for (i in 0 until assets.length()) {
+            val asset = assets.getJSONObject(i)
+            val name = asset.optString("name")
+            if (name.startsWith("Meowto-Ranger-") && name.endsWith(".apk")) {
+                downloadUrl = asset.getString("browser_download_url")
+                apkName = name
+                digest = asset.optString("digest")
+                break
+            }
+        }
+        if (downloadUrl.isBlank()) throw IllegalStateException("ยังไม่มี APK สำหรับเวอร์ชัน $tag")
+        val expectedDigest = resolveDigest(assets, apkName, digest)
+        val checked = URL(downloadUrl)
+        require(checked.protocol == "https" && checked.host.equals("github.com", true) &&
+            checked.path.startsWith("/itonkungx-x/Meowto-Ranger/releases/download/")) {
+            "แหล่งอัปเดตไม่ตรงกับ GitHub ที่กำหนด"
+        }
+        activity.runOnUiThread {
+            if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+            AlertDialog.Builder(activity)
+                .setTitle("Meowto Ranger $tag")
+                .setMessage("เวอร์ชันปัจจุบัน: $installed\nพบรุ่นทางการที่ลงลายเซ็นแล้ว\nต้องการดาวน์โหลดและติดตั้งหรือไม่?")
+                .setNegativeButton("ภายหลัง", null)
+                .setPositiveButton("อัปเดต") { _, _ -> downloadAndInstall(downloadUrl, expectedDigest) }
+                .show()
+        }
+    }
+
+    private fun checkLatestPreview(installed: String, silent: Boolean) {
+        // Use a successful CI run, never claim an unbuilt commit is available.
+        val runsUrl = "https://api.github.com/repos/itonkungx-x/Meowto-Ranger/actions/workflows/build.yml/runs?branch=main&status=success&per_page=8"
+        val runs = JSONObject(fetchJson(runsUrl)).optJSONArray("workflow_runs")
+        if (runs == null || runs.length() == 0) {
+            if (!silent) toast("ยังไม่มีไฟล์ APK จาก GitHub Actions")
+            return
+        }
+        for (i in 0 until runs.length()) {
+            val run = runs.getJSONObject(i)
+            if (run.optString("conclusion") != "success" || run.optString("head_branch") != "main") continue
+            val sha = run.optString("head_sha")
+            val id = run.optLong("id")
+            if (!Regex("^[0-9a-f]{40}$").matches(sha) || id <= 0) continue
+            val gradle = fetchJson("https://raw.githubusercontent.com/itonkungx-x/Meowto-Ranger/$sha/app/build.gradle.kts")
+            val candidate = Regex("""versionName\s*=\s*"([^"]+)"""").find(gradle)?.groupValues?.get(1) ?: continue
+            if (compareVersions(candidate, installed) <= 0) {
+                if (!silent) toast("ใช้งานเวอร์ชันล่าสุดแล้ว ($installed) · ยังไม่มี Release ทางการ")
+                return
+            }
+            val page = "https://github.com/itonkungx-x/Meowto-Ranger/actions/runs/$id"
+            activity.runOnUiThread {
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                AlertDialog.Builder(activity)
+                    .setTitle("พบ v$candidate (Preview)")
+                    .setMessage(
+                        "ติดตั้งอยู่: v$installed\n" +
+                            "GitHub มีรุ่นทดลอง v$candidate ที่คอมไพล์สำเร็จแล้ว\n\n" +
+                            "ยังไม่มี Release ทางการ จึงต้องดาวน์โหลด APK จาก GitHub Actions ก่อน\n" +
+                            "APK รุ่นทดลองอาจใช้ลายเซ็นต่างจากรุ่นที่ติดตั้ง และอาจต้องถอนแอปเดิมก่อนติดตั้งใหม่"
+                    )
+                    .setNegativeButton("ภายหลัง", null)
+                    .setPositiveButton("เปิดหน้าดาวน์โหลด") { _, _ ->
+                        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(page)))
+                    }
+                    .show()
+            }
+            return
+        }
+        if (!silent) toast("ยังไม่มี Preview Build ที่ตรวจสอบได้")
     }
 
     private fun resolveDigest(assets: org.json.JSONArray, apkName: String, apiDigest: String): String {
