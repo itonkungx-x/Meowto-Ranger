@@ -1,45 +1,39 @@
-# Meowto Ranger
+# Meowto Ranger — v0.10.0 Accessibility preview
 
-**LINE Rangers Android automation hub — one APK, extensible modules.**
+LINE Rangers friendship-point helper. The user starts the friend-point workflow inside the game via the visible floating play control and can stop it at any time.
 
-## v0.9 preview (no AccessibilityService)
+## Accessibility + banking compatibility
 
-The preview has an embedded Android Wireless Debugging ADB client to inject touches, a user-consented MediaProjection foreground service to read the game screen, and the original friendship-point workflow (including slower swipes, button confirmation, OCR quota reading, wrong-page recovery). No separate Shizuku application or root is required.
-
-This is **not** an install-and-run-with-zero-authorization product. Android still requires initial Wireless Debugging pairing from Developer Options, and screen-capture permission **once per capture session**. Wireless Debugging may need to be reenabled after restarting the phone. This prototype is not yet verified against K PLUS or the game on a physical device. Do not change bank settings or bypass security warnings.
+- This preview **restores Android AccessibilityService** for game-only screenshots and gestures. Wireless Debugging and MediaProjection are **not required** for this mode.
+- When the device leaves LINE Rangers after the service has seen the game, the service **calls Android AccessibilityService.disableSelf()**. This genuinely turns off the accessibility permission. It does not merely pause the bot or pretend that the service is disabled.
+- The **ปิด Accessibility ทันที (ก่อนใช้ K PLUS)** button can also disable the service before opening the bank app.
+- If K PLUS is detected while this service is still active, the service tries to turn itself off immediately. **The bank may check earlier**, so compatibility is not guaranteed. Follow any security warnings from the bank.
+- Android **does not let ordinary apps enable AccessibilityService programmatically**. Each time the service has disabled itself, the user must re-enable it in **Android Settings → Accessibility**, then return to the app or game. The app includes a shortcut to that screen.
+- No Root, Shizuku, hidden setting changes, WRITE_SECURE_SETTINGS or banking app modification is used. **Fully automatic off-and-on switching is not possible with ordinary Android permissions.**
 
 ## Quick setup
 
-1. Install the APK. Open `Meowto Ranger`.
-2. On the same phone, enable **Developer options → Wireless debugging** while connected to Wi-Fi.
-3. Open **Pair device with pairing code** in Android Settings. Use split-screen with Meowto Ranger to keep the pairing dialog visible.
-4. Enter the **pairing port** and six-digit code into Meowto Ranger, then press **จับคู่**. Do not confuse pairing port with connection port.
-5. Back at the main **Wireless Debugging** screen, read **IP address & Port**, enter its **connection port** in Meowto Ranger and press **เชื่อมต่อ**.
-6. Press **เริ่มช่วยเพื่อน**, confirm LINE sending, and approve Android's **Share entire screen** dialog. The app opens LINE Rangers and runs the friend-points module.
-7. Use the persistent **Meowto Ranger notification → หยุด** to stop while in the game. It also stops automatically upon leaving the game.
+1. Install the APK, open Meowto Ranger.
+2. Tap **เปิดสิทธิ์ Accessibility** and enable Meowto Ranger in Android Accessibility Settings. Sideloaded APKs may require the user to allow restricted settings.
+3. Return to Meowto Ranger and select **เปิด LINE Rangers**. Confirm sending LINE messages.
+4. In LINE Rangers, press the floating **▶** to begin; press **■** to stop.
+5. When leaving the game, wait for the service to turn itself off. Check Accessibility Settings if K PLUS still warns.
+6. For a guaranteed intentional shutdown before opening K PLUS, tap **ปิด Accessibility ทันที (ก่อนใช้ K PLUS)** in Meowto Ranger.
+7. The next game session requires manually enabling Accessibility again.
 
-If the game does not run, verify that Wireless Debugging remains enabled and reconnect with the current port. On Android 14+, a new capture session always needs another Android permission dialog.
+## Safety and limitations
 
-## Safety and permissions
+- Input and screenshots are limited to the LINE Rangers foreground app.
+- A daily limit of 50 friend messages is enforced through the game counter.
+- No K PLUS content is captured, tapped or controlled.
+- Builds in GitHub Actions are **preview/debug** builds and are not tested against a real phone, LINE Rangers or K PLUS.
+- Preview/debug and future release-signed APKs may require uninstall/reinstall when signing certificates differ.
+- In-app updates use official GitHub Releases with package/version/hash checks. No signed release has been verified for v0.10.
 
-- **NO** `BIND_ACCESSIBILITY_SERVICE` in the v0.9 manifest; legacy service removed.
-- Commands only run if Wireless ADB confirms the foreground app is LINE Rangers (`com.linecorp.LGRGS`). Unknown foreground = do not tap.
-- Screen capture exists only during active, user-authorized gameplay and is released when the service stops.
-- No screenshot content or pairing codes are uploaded to any server. ADB signing key lives in app-private `noBackupFilesDir`.
-- The automation sends real LINE messages to friends. It asks for in-app consent when starting and respects the 50-message daily game limit.
-- K PLUS compatibility remains **unverified**. Do not use or attempt to bypass banking security if the bank warns.
+## Project files
 
-## Modules
-
-`modules/friends/FriendSession.kt` implements friendship points. The `ModuleRegistry` and `core/input` + `core/capture` boundaries support future game modules.
-
-## Updates
-
-- Safe numeric timing settings live in `config/friend-points.json` and can refresh without changing the APK.
-- The in-app **ตรวจสอบอัปเดต** uses official GitHub Releases, validates APK SHA-256, and opens Android's official installation confirmation.
-- Code updates require a new signed APK; Android still requires installation confirmation.
-- **Critical:** Preview/debug APKs are not a permanent release channel. Configure a **single stable private release signing key** following [docs/RELEASING.md](docs/RELEASING.md). First install the official signed release; then future releases install as in-place updates.
-
-## Build and status
-
-GitHub Actions CI builds a debug preview after pushes and PRs. Device integration testing is still required for Wireless Debugging pairing, MediaProjection orientation handling, game scene recognition, and K PLUS compatibility. Do not claim an APK built by CI has passed real-game testing.
+- `app/src/main/java/com/itonkung/meowtoranger/FriendAccessibilityService.kt`: Accessibility game engine, safe automatic shutdown.
+- `app/src/main/java/com/itonkung/meowtoranger/MainActivity.kt`: status, consent, game launcher, shutdown and settings shortcuts.
+- `app/src/main/res/xml/friend_accessibility_config.xml`: Android service declaration.
+- `config/friend-points.json`: editable validated timing controls.
+- `docs/RELEASING.md`: stable signing and update process.
