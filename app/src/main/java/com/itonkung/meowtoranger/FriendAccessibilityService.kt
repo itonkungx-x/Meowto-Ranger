@@ -38,20 +38,21 @@ class FriendAccessibilityService : AccessibilityService() {
     companion object {
         const val GAME_PACKAGE = "com.linecorp.LGRGS"
         private const val DAILY_LIMIT = 50
-        private const val MAX_SWIPES = 100
+        private const val MAX_SWIPES = 110
+        private const val MAX_STALE_SCROLLS = 9
         private const val OCR_INTERVAL = 5 // after a verified baseline, verify periodically
         private const val FOCUS_GRACE_MS = 8500L
         private const val NAV_COOLDOWN_MS = 950L
         private const val MAX_GESTURE_ERRORS = 4
         // Enablement is controlled by Android Settings; the app can only disable itself.
-        private const val AUTO_OFF_DELAY_MS = 400L
+        private const val AUTO_OFF_DELAY_MS = 2200L
         @Volatile private var activeService: FriendAccessibilityService? = null
         fun disableForBanking(): Boolean {
             val service = activeService ?: return false
             service.handler.post { service.disableForOtherApps("ปิด Accessibility สำหรับแอปธนาคาร") }
             return true
         }
-        // Slower drag with a shorter travel distance prevents fling/momentum.
+        // Swipe gestures are followed by screen-settle and button validation.
 
     }
 
@@ -92,6 +93,7 @@ class FriendAccessibilityService : AccessibilityService() {
     private var settleStableSamples = 0
     private var settleSignature: IntArray? = null
     private var attemptedX = -1f
+    private var pendingHelpX = -1f
     private var navActions = 0
     private var recoveries = 0
     private var unknownFrames = 0
@@ -332,6 +334,7 @@ class FriendAccessibilityService : AccessibilityService() {
         previousSignature = null
         clearSwipeSettling()
         skippedSlots.clear()
+        pendingHelpX = -1f
         quotaFailures = 0
         screenshotFails = 0
         navActions = 0
@@ -357,6 +360,7 @@ class FriendAccessibilityService : AccessibilityService() {
         handler.removeCallbacksAndMessages(null)
         screenshotPending = false
         gesturePending = false
+        pendingHelpX = -1f
         // Consent remains valid when manually restarting the same authorized
         // session from the floating button. The user can revoke it in-app.
         saveState(reason)
@@ -481,16 +485,17 @@ class FriendAccessibilityService : AccessibilityService() {
                 // After a bounded timeout, fall back only if the same FRIENDS
                 // scene has remained continuously visible for 3+ frames.
                 val stable = settleStableSamples >= 2
-                val timeout = now - settleStartedAt >= prefs.getLong("remote_settle_timeout_ms", 3200L) &&
+                val timeout = now - settleStartedAt >= prefs.getLong("remote_settle_timeout_ms_v11", 2800L) &&
                     settleSamples >= 4 && stableSceneFrames >= 3
                 if ((stable || timeout) && stableSceneFrames >= 2) {
                     phase = Phase.SEARCH
+                    pendingHelpX = -1f
                     settleSignature = null
                     saveState("รายชื่อหยุดแล้ว — กำลังตรวจปุ่ม")
                     enqueue(260)
                 } else {
                     statusOnce("กำลังรอรายชื่อหยุด")
-                    enqueue(prefs.getLong("remote_stability_probe_ms", 410L))
+                    enqueue(prefs.getLong("remote_stability_probe_ms_v11", 320L))
                 }
                 return
             }
@@ -507,17 +512,30 @@ class FriendAccessibilityService : AccessibilityService() {
                     skippedSlots.none { abs(it - px) < 0.040f }
                 }
                 if (candidates.isNotEmpty()) {
-                    attemptedX = candidates.first()
+                    val candidate = candidates.first()
+                    // Fast swipes can leave cards animating after the scene becomes
+                    // recognizable. Only tap when the same button appears twice.
+                    if (pendingHelpX < 0f || abs(candidate - pendingHelpX) > .017f) {
+                        pendingHelpX = candidate
+                        enqueue(280)
+                        return
+                    }
+                    attemptedX = candidate
+                    pendingHelpX = -1f
                     phase = Phase.WAIT_CONFIRM
                     waitTicks = 0
                     saveState("กำลังเปิดหน้าต่างช่วยเหลือ")
                     tap(attemptedX, .688f, 280)
                 } else {
+                    pendingHelpX = -1f
                     val currentSignature = screenSignature(frame)
-                    if (previousSignature != null && currentSignature.contentEquals(previousSignature)) scrollStall++
+                    if (previousSignature != null &&
+                        similarSignature(previousSignature!!, currentSignature)) scrollStall++
                     else scrollStall = 0
-                    if (swipes >= MAX_SWIPES || scrollStall >= 4) {
-                        stopRun("ไม่พบเพื่อนที่ช่วยเหลือได้เพิ่มเติม")
+                    // Short swipe can fail to move a card carousel. Retry with
+                    // a larger drag before assuming we reached the last page.
+                    if (swipes >= MAX_SWIPES || scrollStall >= MAX_STALE_SCROLLS) {
+                        stopRun("เลื่อนสุดรายการหรือไม่พบเพื่อนเพิ่มเติม")
                         return
                     }
                     previousSignature = currentSignature
@@ -526,9 +544,12 @@ class FriendAccessibilityService : AccessibilityService() {
                     phase = Phase.SCROLL_SETTLE
                     clearSwipeSettling()
                     settleStartedAt = SystemClock.elapsedRealtime()
-                    saveState("กำลังเลื่อนหาเพื่อน (${swipes})")
-                    // Use a deliberately shorter/longer swipe to avoid fling.
-                    swipe(.80f, .52f, .34f, .52f, prefs.getLong("remote_swipe_rest_ms", 850L))
+                    val retryLong = scrollStall >= 2
+                    statusOnce(if (retryLong) "ปัดซ้ำเพื่อข้ามจุดที่ติด (${swipes})"
+                        else "กำลังเลื่อนหาเพื่อน (${swipes})")
+                    val rest = prefs.getLong("remote_swipe_rest_ms_v11", 650L).coerceIn(500L, 900L)
+                    if (retryLong) swipe(.86f, .52f, .16f, .52f, rest)
+                    else swipe(.82f, .52f, .25f, .52f, rest)
                 }
             }
             Phase.WAIT_CONFIRM -> {
@@ -623,6 +644,7 @@ class FriendAccessibilityService : AccessibilityService() {
                 waitTicks = 0
                 previousSignature = null
                 skippedSlots.clear()
+                pendingHelpX = -1f
                 clearSwipeSettling()
                 saveState("กำลังช่วยเพื่อน")
                 enqueue(130)
@@ -671,6 +693,7 @@ class FriendAccessibilityService : AccessibilityService() {
         previousSignature = null
         clearSwipeSettling()
         skippedSlots.clear()
+        pendingHelpX = -1f
         statusOnce("กำลังกลับหน้าเพื่อน")
     }
 
@@ -945,7 +968,7 @@ class FriendAccessibilityService : AccessibilityService() {
             moveTo(screenW * x0, screenH * y0)
             lineTo(screenW * x1, screenH * y1)
         }
-        dispatch(path, prefs.getLong("remote_swipe_duration_ms", 720L), delayMs)
+        dispatch(path, prefs.getLong("remote_swipe_duration_ms_v11", 480L).coerceIn(400L, 850L), delayMs)
     }
     private fun dispatch(path: Path, duration: Long, delayMs: Long) {
         if (!running || gesturePending) return
