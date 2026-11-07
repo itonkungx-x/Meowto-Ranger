@@ -26,17 +26,17 @@ class RemoteConfig(context: Context) {
                 val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
                 if (root.optInt("schema") != 1) return@Thread
                 val values = root.optJSONObject("friendPoints") ?: return@Thread
-                val swipe = values.optLong("swipeDurationMs", 720L)
-                val rest = values.optLong("afterSwipeRestMs", 850L)
-                val probe = values.optLong("stableProbeMs", 410L)
-                val timeout = values.optLong("settleTimeoutMs", 3200L)
+                val swipe = values.optLong("swipeDurationMs", 480L)
+                val rest = values.optLong("afterSwipeRestMs", 650L)
+                val probe = values.optLong("stableProbeMs", 320L)
+                val timeout = values.optLong("settleTimeoutMs", 2800L)
                 if (swipe !in 400..1800 || rest !in 450..2500 ||
                     probe !in 250..1200 || timeout !in 2000..6500) return@Thread
                 prefs.edit()
-                    .putLong("remote_swipe_duration_ms", swipe)
-                    .putLong("remote_swipe_rest_ms", rest)
-                    .putLong("remote_stability_probe_ms", probe)
-                    .putLong("remote_settle_timeout_ms", timeout)
+                    .putLong("remote_swipe_duration_ms_v11", swipe)
+                    .putLong("remote_swipe_rest_ms_v11", rest)
+                    .putLong("remote_stability_probe_ms_v11", probe)
+                    .putLong("remote_settle_timeout_ms_v11", timeout)
                     .apply()
             } catch (_: Exception) {
                 // Cached settings and local defaults remain active if offline.

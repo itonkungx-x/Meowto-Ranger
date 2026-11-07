@@ -113,7 +113,7 @@ class MainActivity : Activity() {
         head.addView(icon, LinearLayout.LayoutParams(dp(68), dp(68)))
         val heading = column().apply { setPadding(dp(15), 0, 0, 0) }
         heading.addView(text("MEOWTO", 23f, white, true))
-        heading.addView(text("RANGER · v0.10", 18f, amber, true))
+        heading.addView(text("RANGER · v0.11", 18f, amber, true))
         head.addView(heading)
 
         content.addView(head)

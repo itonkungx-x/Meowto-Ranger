@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "version": 1,
+  "version": 2,
   "friendPoints": {
-    "swipeDurationMs": 720,
-    "afterSwipeRestMs": 850,
-    "stableProbeMs": 410,
-    "settleTimeoutMs": 3200,
+    "swipeDurationMs": 480,
+    "afterSwipeRestMs": 650,
+    "stableProbeMs": 320,
+    "settleTimeoutMs": 2800,
     "confirmationDelayMs": 500,
     "maxGestureRetries": 4
   }
