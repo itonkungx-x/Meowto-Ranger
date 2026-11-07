@@ -153,8 +153,17 @@ class FriendAccessibilityService : AccessibilityService() {
         // In particular, Android's temporary system windows must NOT abort a run.
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
-        val pkg = rootInActiveWindow?.packageName?.toString() ?: event.packageName?.toString() ?: return
-        if (pkg == packageName) return // our own UI or floating controls
+        val pkg = event.packageName?.toString() ?: rootInActiveWindow?.packageName?.toString() ?: return
+        if (pkg == packageName) {
+            // Returning to Meowto after playing is also leaving the game.
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) scheduleAutoOff()
+            return
+        }
+        if (pkg == "com.kasikorn.retail.mbanking.wap") {
+            // The bank must see the service genuinely switched off, not just paused.
+            disableForOtherApps("เปิด K PLUS · ปิด Accessibility")
+            return
+        }
         if (pkg == GAME_PACKAGE) {
             cancelAutoOff()
             hasSeenGame = true
