@@ -2,8 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <queries>
         <package android:name="com.linecorp.LGRGS" />
@@ -25,10 +23,16 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".core.capture.GameCaptureService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
-
+            android:name=".FriendAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/friend_accessibility_config" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
